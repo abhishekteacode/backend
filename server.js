@@ -16,7 +16,21 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static frontend files from 'public' directory
+// Middleware to strip '/api-proxy' prefix if frontend calls /api-proxy/*
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api-proxy/')) {
+    req.url = req.url.replace('/api-proxy', '');
+  } else if (req.url === '/api-proxy') {
+    req.url = '/';
+  }
+  next();
+});
+
+// Serve static frontend files from exported Next.js app ('frontend/out') if available, otherwise 'public'
+const frontendOutPath = path.join(__dirname, 'frontend', 'out');
+if (fs.existsSync(frontendOutPath)) {
+  app.use(express.static(frontendOutPath));
+}
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Calculate distance in meters between two lat/lng points (Haversine formula)
