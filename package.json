@@ -12,6 +12,9 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "mongodb-memory-server": "^11.2.0",
+    "mongoose": "^9.9.3"
   }
 }

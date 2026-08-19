@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { LocationRecord, LocationResponse, TrackSession, DeviceInfo } from '@/types/location';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
-import { Route, Clock, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
+import { Route, Clock, Trash2, AlertTriangle, X, ShieldAlert } from 'lucide-react';
 
 const MapComponent = dynamic(
   () => import('./Map').then((mod) => mod.Map),
@@ -13,6 +13,14 @@ const MapComponent = dynamic(
 );
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '/api-proxy';
+
+interface ConfirmModalState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText: string;
+  onConfirm: () => void;
+}
 
 export const Dashboard: React.FC = () => {
   const [locations, setLocations] = useState<LocationRecord[]>([]);
@@ -33,6 +41,15 @@ export const Dashboard: React.FC = () => {
   const [followLatest, setFollowLatest] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedLocation, setSelectedLocation] = useState<LocationRecord | null>(null);
+  
+  // Attractive Centered Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalState>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    onConfirm: () => {},
+  });
 
   const fetchLocations = useCallback(async () => {
     setIsRefreshing(true);
@@ -66,20 +83,27 @@ export const Dashboard: React.FC = () => {
     }
   }, [page, limit, selectedSessionId, selectedDeviceId]);
 
-  const handleDisconnectDevice = async (deviceId: string) => {
-    if (!window.confirm(`Disconnect device [${deviceId}] from streaming locations?`)) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/devices/disconnect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_id: deviceId }),
-      });
-      if (res.ok) {
-        fetchLocations();
-      }
-    } catch (err) {
-      alert('Failed to disconnect device');
-    }
+  const handleDisconnectDevice = (deviceId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: `Disconnect Device [${deviceId}]?`,
+      message: `Disconnecting device [${deviceId}] will block all its incoming background location updates from being accepted by the server.`,
+      confirmText: 'Yes, Disconnect Device',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${BACKEND_URL}/devices/disconnect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId }),
+          });
+          if (res.ok) {
+            fetchLocations();
+          }
+        } catch (err) {
+          console.error('Failed to disconnect device', err);
+        }
+      },
+    });
   };
 
   const handleReconnectDevice = async (deviceId: string) => {
@@ -93,7 +117,7 @@ export const Dashboard: React.FC = () => {
         fetchLocations();
       }
     } catch (err) {
-      alert('Failed to reconnect device');
+      console.error('Failed to reconnect device', err);
     }
   };
 
@@ -106,63 +130,84 @@ export const Dashboard: React.FC = () => {
         fetchLocations();
       }
     } catch (err) {
-      alert('Failed to delete single location record');
+      console.error('Failed to delete location record', err);
     }
   };
 
-  const handleDeleteDeviceLocations = async (deviceId: string) => {
-    if (!window.confirm(`Are you sure you want to delete all location points for device [${deviceId}]?`)) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/devices/${encodeURIComponent(deviceId)}/locations`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        if (selectedDeviceId === deviceId) {
-          setSelectedDeviceId('ALL');
+  const handleDeleteDeviceLocations = (deviceId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete Device Locations [${deviceId}]?`,
+      message: `Are you sure you want to delete all location points recorded for device [${deviceId}]? This action cannot be undone.`,
+      confirmText: 'Yes, Delete Points',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${BACKEND_URL}/devices/${encodeURIComponent(deviceId)}/locations`, {
+            method: 'DELETE',
+          });
+          if (res.ok) {
+            if (selectedDeviceId === deviceId) {
+              setSelectedDeviceId('ALL');
+            }
+            fetchLocations();
+          }
+        } catch (err) {
+          console.error('Failed to delete device location records', err);
         }
-        fetchLocations();
-      }
-    } catch (err) {
-      alert('Failed to delete device location records');
-    }
+      },
+    });
   };
 
-  const handleDeleteSession = async (sessionId: string) => {
-    if (!window.confirm(`Are you sure you want to delete session [${sessionId}] and all its location fixes?`)) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/sessions/${encodeURIComponent(sessionId)}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        setSelectedSessionId('ALL');
-        setSelectedLocation(null);
-        setPage(1);
-        fetchLocations();
-      }
-    } catch (err) {
-      alert('Failed to delete session');
-    }
+  const handleDeleteSession = (sessionId: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete Tracking Session [${sessionId}]?`,
+      message: `Are you sure you want to delete session [${sessionId}] and all its recorded location points? This cannot be undone.`,
+      confirmText: 'Yes, Delete Session',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${BACKEND_URL}/sessions/${encodeURIComponent(sessionId)}`, {
+            method: 'DELETE',
+          });
+          if (res.ok) {
+            setSelectedSessionId('ALL');
+            setSelectedLocation(null);
+            setPage(1);
+            fetchLocations();
+          }
+        } catch (err) {
+          console.error('Failed to delete session', err);
+        }
+      },
+    });
   };
 
-  const handleClearLocations = async () => {
-    if (!window.confirm('Are you sure you want to clear all stored location records and tracking sessions? (Registered devices will remain saved)')) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/locations`, { method: 'DELETE' });
-      if (res.ok) {
-        setLocations([]);
-        setMapPoints([]);
-        setSessions([]);
-        setSelectedLocation(null);
-        setSelectedSessionId('ALL');
-        setSelectedDeviceId('ALL');
-        setTotalCount(0);
-        setTotalPages(1);
-        setPage(1);
-        fetchLocations();
-      }
-    } catch (err) {
-      alert('Failed to clear location history');
-    }
+  const handleClearLocations = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Clear Full Database & History?',
+      message: 'Are you sure you want to clear all stored location records and tracking sessions from MongoDB? On confirmation, full database location history will be permanently wiped.',
+      confirmText: 'Yes, Clear Full Database',
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${BACKEND_URL}/locations`, { method: 'DELETE' });
+          if (res.ok) {
+            setLocations([]);
+            setMapPoints([]);
+            setSessions([]);
+            setSelectedLocation(null);
+            setSelectedSessionId('ALL');
+            setSelectedDeviceId('ALL');
+            setTotalCount(0);
+            setTotalPages(1);
+            setPage(1);
+            fetchLocations();
+          }
+        } catch (err) {
+          console.error('Failed to clear location history', err);
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -192,23 +237,17 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans relative">
       <Header
         totalCount={totalCount}
         deviceCount={devices.length || uniqueDevices.size}
         sessions={sessions}
         selectedSessionId={selectedSessionId}
-        onSelectSessionId={(id) => {
-          setSelectedSessionId(id);
-          setPage(1);
-        }}
+        onSelectSessionId={setSelectedSessionId}
         onDeleteSession={handleDeleteSession}
         devices={devices}
         selectedDeviceId={selectedDeviceId}
-        onSelectDeviceId={(id) => {
-          setSelectedDeviceId(id);
-          setPage(1);
-        }}
+        onSelectDeviceId={setSelectedDeviceId}
         onDisconnectDevice={handleDisconnectDevice}
         onReconnectDevice={handleReconnectDevice}
         onDeleteDeviceLocations={handleDeleteDeviceLocations}
@@ -217,35 +256,28 @@ export const Dashboard: React.FC = () => {
         onClear={handleClearLocations}
       />
 
-      <main className="flex flex-1 relative overflow-hidden min-h-0 flex-col md:flex-row">
-        <div className="flex-1 h-full min-h-[50vh] relative">
-          {/* Active Session Info Banner Overlay */}
+      <main className="flex flex-1 overflow-hidden relative">
+        <div className="flex-1 relative bg-slate-900">
+          {/* Active Session Info Bar Overlay */}
           {selectedSessionData && (
-            <div className="absolute top-4 left-4 z-[400] bg-slate-900/90 backdrop-blur border border-slate-800 rounded-xl p-3.5 shadow-xl text-xs flex flex-wrap items-center gap-4 max-w-[90%]">
-              <div className="flex items-center gap-2">
-                <Route className="w-4 h-4 text-purple-400" />
-                <div>
-                  <div className="font-bold text-slate-200 flex items-center gap-1.5 font-mono">
-                    {selectedSessionData.id}
-                    {selectedSessionData.isOpen ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded font-sans">
-                        <CheckCircle2 className="w-3 h-3" /> Active
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-1.5 py-0.2 rounded font-sans">
-                        <XCircle className="w-3 h-3" /> Closed
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-slate-400 font-sans">
-                    Device: <strong className="text-slate-300">{selectedSessionData.device_id}</strong>
-                  </div>
-                </div>
+            <div className="absolute top-4 left-4 z-[999] bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-xl p-3 shadow-lg text-xs max-w-sm">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="font-mono font-bold text-purple-400 flex items-center gap-1.5">
+                  <Route className="w-3.5 h-3.5 text-purple-400" />
+                  {selectedSessionData.id}
+                </span>
+                {selectedSessionData.isOpen ? (
+                  <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded font-semibold">
+                    🟢 Active
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-rose-400 bg-rose-500/10 border border-rose-500/20 px-1.5 py-0.5 rounded font-semibold">
+                    🔴 Closed
+                  </span>
+                )}
               </div>
 
-              <div className="h-6 w-px bg-slate-800 hidden sm:block" />
-
-              <div className="flex items-center gap-4 text-slate-300">
+              <div className="flex items-center gap-4 text-xs font-mono">
                 <div>
                   <span className="text-slate-400 text-[10px] block">Distance</span>
                   <strong className="text-purple-400 text-sm font-semibold">
@@ -272,7 +304,7 @@ export const Dashboard: React.FC = () => {
                 <button
                   onClick={() => handleDeleteSession(selectedSessionData.id)}
                   title="Delete this session"
-                  className="bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 p-1.5 rounded-lg transition ml-2"
+                  className="bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 p-1.5 rounded-lg transition ml-2 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -319,6 +351,59 @@ export const Dashboard: React.FC = () => {
           onSelectLocation={(loc) => setSelectedLocation(loc)}
         />
       </main>
+
+      {/* 🌟 ATTRACTIVE CENTERED CONFIRMATION DIALOG 🌟 */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[999999] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800/80 rounded-3xl shadow-2xl shadow-rose-950/40 p-6 w-full max-w-md text-center relative overflow-hidden transform transition-all scale-100">
+            {/* Top Glowing Ambient Accent */}
+            <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-40 h-20 bg-rose-500/20 rounded-full blur-2xl pointer-events-none" />
+
+            {/* Close Cross Button */}
+            <button
+              onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-xl hover:bg-slate-800/80 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Pulsing Icon */}
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-gradient-to-b from-rose-500/20 to-rose-500/5 border border-rose-500/30 flex items-center justify-center mb-4 text-rose-400 shadow-inner">
+              <ShieldAlert className="w-7 h-7 animate-pulse" />
+            </div>
+
+            {/* Title & Message */}
+            <h3 className="text-lg font-extrabold tracking-tight text-white mb-2">
+              {confirmModal.title}
+            </h3>
+
+            <p className="text-slate-400 text-xs leading-relaxed mb-6 px-2">
+              {confirmModal.message}
+            </p>
+
+            {/* Buttons */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                className="flex-1 bg-slate-800/80 hover:bg-slate-800 text-slate-300 font-semibold py-2.5 px-4 rounded-xl text-xs border border-slate-700/50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                }}
+                className="flex-1 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                {confirmModal.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
