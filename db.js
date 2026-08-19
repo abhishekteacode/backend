@@ -1,19 +1,38 @@
 const mongoose = require('mongoose');
 require('dotenv').config();
 
+// Global cached connection for Serverless environments (e.g. Vercel)
+let cached = global.mongooseCache;
+if (!cached) {
+  cached = global.mongooseCache = { conn: null, promise: null };
+}
+
 let memMongoInstance = null;
 
 async function connectDB() {
+  if (cached.conn) {
+    return cached.conn;
+  }
+
   const envUri = process.env.MONGODB_URI;
 
   // Tier 1: Check if custom MONGODB_URI is provided in .env (e.g. MongoDB Atlas Cloud)
   if (envUri && envUri.trim() !== '' && !envUri.includes('127.0.0.1') && !envUri.includes('localhost')) {
-    try {
+    if (!cached.promise) {
       console.log(`☁️ Connecting to Cloud MongoDB Atlas URI...`);
-      const conn = await mongoose.connect(envUri, { serverSelectionTimeoutMS: 6000 });
-      console.log(`✅ Connected to Cloud MongoDB Atlas: ${conn.connection.host} / ${conn.connection.name}`);
-      return conn;
+      cached.promise = mongoose.connect(envUri, {
+        serverSelectionTimeoutMS: 5000,
+        bufferCommands: false
+      }).then((m) => {
+        console.log(`✅ Connected to Cloud MongoDB Atlas: ${m.connection.host} / ${m.connection.name}`);
+        return m;
+      });
+    }
+    try {
+      cached.conn = await cached.promise;
+      return cached.conn;
     } catch (err) {
+      cached.promise = null;
       console.warn(`⚠️ Cloud MongoDB connection failed (${err.message}). Trying local fallback...`);
     }
   }
@@ -23,6 +42,7 @@ async function connectDB() {
   try {
     const conn = await mongoose.connect(localUri, { serverSelectionTimeoutMS: 2000 });
     console.log(`💻 Connected to standalone Local MongoDB server: ${conn.connection.host} / ${conn.connection.name}`);
+    cached.conn = conn;
     return conn;
   } catch (err) {
     // Standalone local mongod service is not running
@@ -41,7 +61,8 @@ async function connectDB() {
 
     const memoryUri = memMongoInstance.getUri();
     const conn = await mongoose.connect(memoryUri);
-    console.log(`🚀 Embedded MongoDB active & connected! Anyone can run this project out-of-the-box.`);
+    console.log(`🚀 Embedded MongoDB active & connected!`);
+    cached.conn = conn;
     return conn;
   } catch (err) {
     console.error(`⚠️ Failed to start Embedded MongoDB: ${err.message}`);
@@ -51,6 +72,8 @@ async function connectDB() {
 
 async function disconnectDB() {
   await mongoose.disconnect();
+  cached.conn = null;
+  cached.promise = null;
   if (memMongoInstance) {
     await memMongoInstance.stop();
   }

@@ -18,13 +18,18 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Middleware to strip '/api-proxy' prefix if frontend calls /api-proxy/*
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   if (req.url.startsWith('/api-proxy/')) {
     req.url = req.url.replace('/api-proxy', '');
   } else if (req.url === '/api-proxy') {
     req.url = '/';
   }
-  next();
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: 'Database connection error: ' + err.message });
+  }
 });
 
 // Serve static frontend files from exported Next.js app ('frontend/out') if available, otherwise 'public'
