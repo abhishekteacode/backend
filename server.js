@@ -693,13 +693,17 @@ app.delete('/locations', (req, res) => {
   });
 });
 
-/**
- * GET /
- * Serve visual map interface
- */
 app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  const nextIndexPath = path.join(__dirname, 'frontend', 'out', 'index.html');
+  const publicIndexPath = path.join(__dirname, 'public', 'index.html');
+  if (fs.existsSync(nextIndexPath)) {
+    return res.sendFile(nextIndexPath);
+  } else if (fs.existsSync(publicIndexPath)) {
+    return res.sendFile(publicIndexPath);
+  } else {
+    return res.status(404).send('Frontend UI not found. Run npm run build:frontend first.');
+  }
 });
 
 // Start HTTP Server
