@@ -87,6 +87,42 @@ export const Map: React.FC<MapProps> = ({
       return tA - tB;
     });
 
+    // Calculate heading/bearing for location points
+    const headingsMap = new globalThis.Map<LocationRecord, number>();
+    for (let i = 0; i < chronologicalLocs.length; i++) {
+      const loc = chronologicalLocs[i];
+      const coords = loc.coords || loc;
+      let heading = Number(coords.heading ?? (loc as any).heading);
+
+      const lat = Number(coords.latitude ?? (loc as any).latitude);
+      const lng = Number(coords.longitude ?? (loc as any).longitude);
+
+      if (isNaN(heading) || heading < 0) {
+        if (i < chronologicalLocs.length - 1) {
+          const nextCoords = chronologicalLocs[i + 1].coords || chronologicalLocs[i + 1];
+          const nextLat = Number(nextCoords.latitude ?? (chronologicalLocs[i + 1] as any).latitude);
+          const nextLng = Number(nextCoords.longitude ?? (chronologicalLocs[i + 1] as any).longitude);
+          if (!isNaN(lat) && !isNaN(lng) && !isNaN(nextLat) && !isNaN(nextLng) && (lat !== nextLat || lng !== nextLng)) {
+            heading = calculateBearing(lat, lng, nextLat, nextLng);
+          } else {
+            heading = 0;
+          }
+        } else if (i > 0) {
+          const prevCoords = chronologicalLocs[i - 1].coords || chronologicalLocs[i - 1];
+          const prevLat = Number(prevCoords.latitude ?? (chronologicalLocs[i - 1] as any).latitude);
+          const prevLng = Number(prevCoords.longitude ?? (chronologicalLocs[i - 1] as any).longitude);
+          if (!isNaN(lat) && !isNaN(lng) && !isNaN(prevLat) && !isNaN(prevLng) && (lat !== prevLat || lng !== prevLng)) {
+            heading = calculateBearing(prevLat, prevLng, lat, lng);
+          } else {
+            heading = 0;
+          }
+        } else {
+          heading = 0;
+        }
+      }
+      headingsMap.set(loc, heading);
+    }
+
     chronologicalLocs.forEach((loc) => {
       const coords = loc.coords || loc;
       const lat = Number(coords.latitude ?? (loc as any).latitude);
@@ -100,7 +136,7 @@ export const Map: React.FC<MapProps> = ({
     // Display locations (newest first)
     const displayLocations = [...locations].reverse();
 
-    // Limit circle markers creation to latest MAX_MAP_MARKERS or event points for extreme performance
+    // Limit markers creation to latest MAX_MAP_MARKERS or event points for extreme performance
     const markersToRender = displayLocations.filter((loc, idx) => {
       const hasEvent = loc.event || loc.geofence || (loc.extras && loc.extras.geofence);
       return idx < MAX_MAP_MARKERS || hasEvent;
@@ -115,14 +151,37 @@ export const Map: React.FC<MapProps> = ({
       boundsPoints.push([lat, lng]);
 
       const isLatest = index === 0;
-      const marker = L.circleMarker([lat, lng], {
-        radius: isLatest ? 10 : 6,
-        fillColor: isLatest ? '#22c55e' : '#38bdf8',
-        color: '#ffffff',
-        weight: isLatest ? 3 : 1.5,
-        opacity: 1,
-        fillOpacity: 0.9,
+      const heading = headingsMap.get(loc) ?? 0;
+
+      const size = isLatest ? 28 : 20;
+      const iconSize = isLatest ? 20 : 14;
+      const fillColor = isLatest ? '#22c55e' : '#38bdf8';
+      const strokeColor = isLatest ? '#15803d' : '#0284c7';
+      const shadowColor = isLatest ? 'rgba(34, 197, 94, 0.4)' : 'rgba(0, 0, 0, 0.4)';
+
+      const arrowIcon = L.divIcon({
+        className: 'location-arrow-marker',
+        html: `<div style="
+          transform: rotate(${heading}deg);
+          width: ${size}px;
+          height: ${size}px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: ${isLatest ? 'rgba(34, 197, 94, 0.15)' : 'transparent'};
+          border-radius: 50%;
+          filter: drop-shadow(0 2px 4px ${shadowColor});
+          transition: transform 0.2s ease;
+        ">
+          <svg width="${iconSize}" height="${iconSize}" viewBox="0 0 24 24" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.5">
+            <polygon points="12 2 19 21 12 17 5 21 12 2"/>
+          </svg>
+        </div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
       });
+
+      const marker = L.marker([lat, lng], { icon: arrowIcon });
 
       const gf = loc.geofence || (loc.extras && loc.extras.geofence);
       const timeStr = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : 'N/A';
