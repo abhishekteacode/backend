@@ -1,0 +1,16 @@
+{
+  "name": "bg-geo-location-server",
+  "version": "1.0.0",
+  "description": "Node.js & Express backend server and visual map dashboard for background location updates",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "frontend": "npm run dev --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
