@@ -21,6 +21,10 @@ Thumbs.db
 *.tmp
 *.bak
 server_live.log
+locations_db.json
+devices_db.json
+sessions_db.json
+*_db.json
 locations_db.json.bak
 
 # IDE & Editor
