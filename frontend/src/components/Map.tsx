@@ -87,39 +87,46 @@ export const Map: React.FC<MapProps> = ({
       return tA - tB;
     });
 
-    // Calculate heading/bearing for location points
+    // Calculate heading/bearing for location points to align with path trajectory
     const headingsMap = new globalThis.Map<LocationRecord, number>();
     for (let i = 0; i < chronologicalLocs.length; i++) {
       const loc = chronologicalLocs[i];
       const coords = loc.coords || loc;
-      let heading = Number(coords.heading ?? (loc as any).heading);
-
       const lat = Number(coords.latitude ?? (loc as any).latitude);
       const lng = Number(coords.longitude ?? (loc as any).longitude);
+      const rawHeading = Number(coords.heading ?? (loc as any).heading);
 
-      if (isNaN(heading) || heading < 0) {
-        if (i < chronologicalLocs.length - 1) {
-          const nextCoords = chronologicalLocs[i + 1].coords || chronologicalLocs[i + 1];
-          const nextLat = Number(nextCoords.latitude ?? (chronologicalLocs[i + 1] as any).latitude);
-          const nextLng = Number(nextCoords.longitude ?? (chronologicalLocs[i + 1] as any).longitude);
-          if (!isNaN(lat) && !isNaN(lng) && !isNaN(nextLat) && !isNaN(nextLng) && (lat !== nextLat || lng !== nextLng)) {
-            heading = calculateBearing(lat, lng, nextLat, nextLng);
-          } else {
-            heading = 0;
-          }
-        } else if (i > 0) {
-          const prevCoords = chronologicalLocs[i - 1].coords || chronologicalLocs[i - 1];
-          const prevLat = Number(prevCoords.latitude ?? (chronologicalLocs[i - 1] as any).latitude);
-          const prevLng = Number(prevCoords.longitude ?? (chronologicalLocs[i - 1] as any).longitude);
-          if (!isNaN(lat) && !isNaN(lng) && !isNaN(prevLat) && !isNaN(prevLng) && (lat !== prevLat || lng !== prevLng)) {
-            heading = calculateBearing(prevLat, prevLng, lat, lng);
-          } else {
-            heading = 0;
-          }
-        } else {
-          heading = 0;
+      let heading = 0;
+      let pathBearing: number | null = null;
+
+      // Compute path trajectory bearing to next point
+      if (i < chronologicalLocs.length - 1) {
+        const nextCoords = chronologicalLocs[i + 1].coords || chronologicalLocs[i + 1];
+        const nextLat = Number(nextCoords.latitude ?? (chronologicalLocs[i + 1] as any).latitude);
+        const nextLng = Number(nextCoords.longitude ?? (chronologicalLocs[i + 1] as any).longitude);
+        if (!isNaN(lat) && !isNaN(lng) && !isNaN(nextLat) && !isNaN(nextLng) && (lat !== nextLat || lng !== nextLng)) {
+          pathBearing = calculateBearing(lat, lng, nextLat, nextLng);
         }
       }
+
+      // Or compute path trajectory bearing from previous point if last point
+      if (pathBearing === null && i > 0) {
+        const prevCoords = chronologicalLocs[i - 1].coords || chronologicalLocs[i - 1];
+        const prevLat = Number(prevCoords.latitude ?? (chronologicalLocs[i - 1] as any).latitude);
+        const prevLng = Number(prevCoords.longitude ?? (chronologicalLocs[i - 1] as any).longitude);
+        if (!isNaN(lat) && !isNaN(lng) && !isNaN(prevLat) && !isNaN(prevLng) && (lat !== prevLat || lng !== prevLng)) {
+          pathBearing = calculateBearing(prevLat, prevLng, lat, lng);
+        }
+      }
+
+      if (pathBearing !== null) {
+        heading = pathBearing;
+      } else if (!isNaN(rawHeading) && rawHeading > 0) {
+        heading = rawHeading;
+      } else {
+        heading = 0;
+      }
+
       headingsMap.set(loc, heading);
     }
 
