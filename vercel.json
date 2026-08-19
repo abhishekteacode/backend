@@ -15,7 +15,7 @@
   ],
   "routes": [
     {
-      "src": "/(devices|sessions|locations)(.*)",
+      "src": "/(api-proxy|devices|sessions|locations)(.*)",
       "dest": "/server.js"
     },
     {

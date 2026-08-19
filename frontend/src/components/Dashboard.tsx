@@ -12,7 +12,7 @@ const MapComponent = dynamic(
   { ssr: false }
 );
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '/api-proxy';
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
 interface ConfirmModalState {
   isOpen: boolean;
